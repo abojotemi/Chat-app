@@ -6,4 +6,4 @@ from sqlmodel import Field, SQLModel
 
 class AbstractBaseModel(SQLModel):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.now)
+    last_login: datetime = Field(default_factory=datetime.now)

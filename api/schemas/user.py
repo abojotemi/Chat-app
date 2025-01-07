@@ -8,11 +8,12 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, max_length=30)
 
 
-class UserSchema(UserCreate):
+class UserSchema(BaseModel):
+    username: str = Field(min_length=3, max_length=30)
+    email: EmailStr
     id: str
     last_login: datetime
-    password: str
-    model_config = ConfigDict(extra='ignore',)
+    model_config = ConfigDict(extra='ignore')
     
 
 

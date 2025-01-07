@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi import Depends, HTTPException, status
@@ -27,6 +28,8 @@ logging.basicConfig(level=logging.INFO)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
 
 
 class UserService:
@@ -147,7 +150,7 @@ class UserService:
         payload = {"id": user.id, "email": user.email, "username": user.username}
 
         expiry_time = datetime.now(timezone.utc) + timedelta(
-            minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES
+            days=Config.ACCESS_TOKEN_EXPIRE_DAYS
         )
 
         payload.update({"exp": expiry_time})
@@ -204,30 +207,26 @@ class UserService:
         except InvalidTokenError:
             raise self.UserError.CREDENTIAL_EXCEPTION
 
-    async def authenticate_user(self, user_data: UserLogin, session: AsyncSession):
+    async def authenticate_user(self, user_data: UserLogin, session: AsyncSession) -> User | Literal[False]:
         user = await self.get_user_by_email(user_data.email, session)
         if not user:
             return False
 
-        # Check if account is locked
-        if not await self._check_login_attempts(user):
-            raise self.UserError.ACCOUNT_LOCKED
-
         is_valid = self._verify_password(user_data.password, user.password)
-        await self._update_login_attempts(user, is_valid, session)
 
         return user if is_valid else False
 
-    async def login_user(self, user: UserLogin, session: AsyncSession):
-        user = await self.authenticate_user(user, session)
+    async def login_user(self, user_login: UserLogin, session: AsyncSession):
+        user = await self.authenticate_user(user_login, session)
         if not user:
             raise self.UserError.INVALID_CREDENTIALS
 
         # Update last login
-        user.last_login = datetime.now(timezone.utc)
+        user.last_login = datetime.now()
         session.add(user)
-
-        access_token = await self.create_access_token_in_db(user, session)
+        await session.commit()
+        await session.refresh(user)
+        # await self.create_access_token_in_db(user, session)
         return user
 
     async def create_new_chat(
@@ -267,7 +266,10 @@ class UserService:
         access_token = self.create_access_token(user)
         token = Token(user_id=user.id, data=access_token)
         session.add(token)
-        await session.commit()
+        try:
+            await session.commit()
+        except Exception as e:
+            logger.error(f"Error commiting new_token: {str(e)}")
         return access_token
 
     async def delete_user(
